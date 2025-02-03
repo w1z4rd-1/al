@@ -1,0 +1,13 @@
+{
+  "name": "alfred",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "type": "module",
+  "dependencies": {
+    "ollama": "^1.0.0"
+  }
+}
