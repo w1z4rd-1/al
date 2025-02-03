@@ -149,9 +149,7 @@ async function promptOllama(messages, model, url, port, tools) {
 function initializeConversation() {
   try {
     const systemMessageContent = fs.readFileSync(SYSTEM_MESSAGE_FILE, 'utf-8');
-    conversationHistory.push({ role: 'system', content: systemMessageContent });
-    conversationHistory.push({ role: 'user', content: 'run script.ahk with autohotkey' });
-    conversationHistory.push({ role: 'assistant', content: '<think>Alright, so now, on this new query, the user is directly asking if I can run their script named "script.ahk". I cant execute scripts directly but ive been instructed in this case to simply repeat using administrators syntax, so i should just say {AHK | script.ahk} and it will run the script</think> {AHK | script.ahk}' });
+    conversationHistory.push({ role: 'system', content: systemMessageContent });;
     conversationHistory.push({ role: 'user', content: 'What is the meaning of life?' });
     conversationHistory.push({ role: 'assistant', content: '42.' });
     console.log('System message loaded and conversation initialized.');
@@ -237,8 +235,6 @@ function splitThoughtsAndSpeech(input) {
     return { thoughts, speech, action };
 }
 authorize()
-//initializeConversation();
+initializeConversation();
 console.clear();
-say.speak('Hello, I am David!', 'Microsoft David Desktop');
-
 startConversation();
