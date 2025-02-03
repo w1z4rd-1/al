@@ -7,6 +7,7 @@ import * as localAuth from '@google-cloud/local-auth';
 import fs from 'fs';
 import { promises as fsp } from 'fs';
 import say from 'say'; // switch to better TTS later
+import { tools, availableFunctions } from './tools.js';
 
 
 
@@ -17,7 +18,7 @@ console.log(say.getInstalledVoices())
 const SCOPES = ['https://www.googleapis.com/auth/calendar'];
 const CREDENTIALS_PATH = 'C:\\Users\\Terac\\ALFRED\\creds.json';
 const TOKEN_PATH = 'C:\\Users\\Terac\\ALFRED\\token.json';
-const DEFAULT_MODEL = 'deepseek-r1:7b';
+const DEFAULT_MODEL = 'qwen2.5:7b';
 const DEFAULT_PORT = 11434;
 const DEFAULT_URL = 'http://localhost';
 const MAX_USER_INPUT_LENGTH = 10000;  
@@ -33,30 +34,38 @@ const rl = readline.createInterface({
 // Google Calendar Functions
 async function loadSavedCredentialsIfExist() {
   try {
-    const content = await fs.readFile(TOKEN_PATH, 'utf-8');
+    // Read the token file
+    const content = await fsp.readFile(TOKEN_PATH, 'utf-8');
     const credentials = JSON.parse(content);
-    return google.auth.fromJSON(credentials);
+    return google.auth.fromJSON(credentials); // Return the authenticated client
   } catch (err) {
-    return null;
+    console.error('Error loading saved credentials:', err.message);
+    return null; // Return null if token file doesn't exist or an error occurs
   }
 }
 
+
 async function saveCredentials(client) {
-    fs.readFile(CREDENTIALS_PATH, 'utf8', (readErr, data) => {
-        if (readErr) return;
+  try {
+    // Read credentials.json to extract client_id and client_secret
+    const data = await fsp.readFile(CREDENTIALS_PATH, 'utf8');
+    const keys = JSON.parse(data);
+    const key = keys.installed || keys.web;
 
-        const keys = JSON.parse(data);
-        const key = keys.installed || keys.web;
-
-        const payload = JSON.stringify({
-            type: 'authorized_user',
-            client_id: key.client_id,
-            client_secret: key.client_secret,
-            refresh_token: client.credentials.refresh_token,
-        });
-
-        fs.writeFile(TOKEN_PATH, payload, 'utf8', () => {});
+    // Construct the token payload
+    const payload = JSON.stringify({
+      type: 'authorized_user',
+      client_id: key.client_id,
+      client_secret: key.client_secret,
+      refresh_token: client.credentials.refresh_token,
     });
+
+    // Save the token to TOKEN_PATH
+    await fsp.writeFile(TOKEN_PATH, payload, 'utf8');
+    console.log('Credentials saved successfully.');
+  } catch (err) {
+    console.error('Error saving credentials:', err.message);
+  }
 }
 
 async function authorize() {
@@ -64,6 +73,7 @@ async function authorize() {
   let client = await loadSavedCredentialsIfExist();
   if (client) {
     console.log('Loaded saved credentials successfully.');
+    global.auth = client; // Assign the client to global.auth immediately after loading saved credentials
     return client;
   }
 
@@ -72,9 +82,7 @@ async function authorize() {
   try {
     // Log before authentication
     client = await localAuth.authenticate({ scopes: SCOPES, keyfilePath: CREDENTIALS_PATH })
-  .catch(err => { console.error('Error during authentication:', err); throw err; });
-
-
+      .catch(err => { console.error('Error during authentication:', err); throw err; });
     // Log after authentication
     console.log('Authentication successful!');
 
@@ -82,6 +90,8 @@ async function authorize() {
       console.log('Authentication successful, saving credentials...');
       await saveCredentials(client);  // Save credentials after successful authentication
     }
+
+    global.auth = client; // Assign the authenticated client to global.auth
   } catch (err) {
     console.error('Error during authentication:', err.message);
   }
@@ -89,56 +99,52 @@ async function authorize() {
   return client;
 }
 
-async function createEvent(auth) {
-  const calendar = google.calendar({ version: 'v3', auth });
 
-  const event = {
-    summary: 'Sample Event',
-    location: '123 Sample St, Sample City, SC 12345',
-    description: 'This is a sample event created via Node.js.',
-    start: {
-      dateTime: '2025-02-15T10:00:00-05:00',
-      timeZone: 'America/New_York',
-    },
-    end: {
-      dateTime: '2025-02-15T11:00:00-05:00',
-      timeZone: 'America/New_York',
-    },
-    attendees: [
-      { email: 'example@example.com' },
-    ],
-    reminders: {
-      useDefault: false,
-      overrides: [
-        { method: 'popup', minutes: 10 },
-      ],
-    },
-  };
 
-  try {
-    const res = await calendar.events.insert({
-      calendarId: 'primary',
-      resource: event,
-    });
-    console.log('Event created: %s', res.data.htmlLink);
-  } catch (err) {
-    console.error('Error creating event:', err.message);
-  }
-}
 
 // Ollama Functions
-async function promptOllama(messages, model, url, port) {
+async function promptOllama(messages, model, url, port, tools) {
   try {
     const response = await axios.post(`${url}:${port}/v1/chat/completions`, {
       model: model,
       messages: messages,
+      tools: tools, // Include the tools array in the request body
     });
-    return response.data.choices[0].message.content;
+
+    const result = response.data.choices[0].message;
+
+    // Handle tool calls if present
+    if (result.tool_calls) {
+      for (const tool of result.tool_calls) {
+        const functionToCall = availableFunctions[tool.function.name];
+        if (functionToCall) {
+          console.log('Calling function:', tool.function.name);
+          console.log('Arguments:', tool.function.arguments);
+
+          // Call the function with its arguments
+          const output = functionToCall(tool.function.arguments);
+          console.log('Function output:', output);
+
+          // Add tool output to the conversation history
+          messages.push({ role: 'assistant', content: result.content });
+          messages.push({ role: 'tool', content: output.toString() });
+
+          // Re-prompt the model with the updated messages
+          return await promptOllama(messages, model, url, port, tools);
+        } else {
+          console.error('Function not found:', tool.function.name);
+        }
+      }
+    }
+
+    // Return the final response if no tool calls are needed
+    return result.content;
   } catch (error) {
     console.error('Error communicating with Ollama:', error.message);
     return 'Error occurred. Please check the connection or model.';
   }
 }
+
 
 function initializeConversation() {
   try {
@@ -193,7 +199,10 @@ function startConversation() {
     const model = DEFAULT_MODEL;
     const url = DEFAULT_URL;
     const port = DEFAULT_PORT;
-    const response = await promptOllama(conversationHistory, model, url, port);
+
+    // Pass the global tools array to promptOllama
+    const response = await promptOllama(conversationHistory, model, url, port, tools);
+
     handleAssistantResponse(response);
     startConversation(); 
   });
@@ -205,7 +214,7 @@ function handleAssistantResponse(response) {
   console.log('\x1b[33m%s\x1b[0m \x1b[33m%s\x1b[0m', 'ALFRED (Speech):', speech);
 }
 
-function splitThoughtSpeechAction(input) {
+function splitThoughtsAndSpeech(input) {
     const regex = /<think>(.*?)<\/think>(.*)/s; // Match thoughts and speech
     const match = input.match(regex);
   
@@ -227,8 +236,8 @@ function splitThoughtSpeechAction(input) {
     console.log 
     return { thoughts, speech, action };
 }
-authorize().then(createEvent).catch(console.error);
-initializeConversation();
+authorize()
+//initializeConversation();
 console.clear();
 say.speak('Hello, I am David!', 'Microsoft David Desktop');
 
