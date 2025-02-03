@@ -6,7 +6,7 @@ import { google } from 'googleapis';
 import * as localAuth from '@google-cloud/local-auth';
 import fs from 'fs';
 import { promises as fsp } from 'fs';
-import say from 'say'; // Import say.js
+import say from 'say'; // switch to better TTS later
 
 
 
@@ -212,7 +212,7 @@ function splitThoughtSpeechAction(input) {
     let thoughts = '';
     let speech = input;
     let action = null;
-  //technicly a change for testing
+
     if (match) {
       thoughts = match[1].trim(); // Extract thoughts
       speech = match[2].trim();   // Extract speech
@@ -226,9 +226,7 @@ function splitThoughtSpeechAction(input) {
     }
     console.log 
     return { thoughts, speech, action };
-  }
-  
-
+}
 authorize().then(createEvent).catch(console.error);
 initializeConversation();
 console.clear();
