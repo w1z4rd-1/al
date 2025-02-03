@@ -12,16 +12,8 @@ function addTwoNumbers(args) {
     console.log('function running');
     return a + b;
   }
-  function getCurrentISOTime() {
-    const now = new Date();
-  
-    // Convert to ISO 8601 format, ensuring it's in UTC
-    const isoTime = now.toISOString();
-  
-    return isoTime; // Example: "2025-02-03T02:33:00.000Z"
-  }
   async function getUserLocation() {
-    const ip = await getIpAddress();  // Get IP address of the client (this function needs to be defined)
+    const ip = await getIP()
     const apiUrl = `http://ip-api.com/json/${ip}?fields=lat,lon,timezone`;
   
     try {
@@ -43,34 +35,34 @@ function addTwoNumbers(args) {
       return null;
     }
   }
+  async function getIP() {
+    try {
+      const response = await axios.get('https://api.ipify.org?format=json');
+      return response.data.ip; // Returns your public IP address as a string
+    } catch (error) {
+      console.error('Error fetching IP address:', error);
+      return null;
+    }
+  }
+
   function getTime() {
     const now = new Date();
-  
-    // Manually format the date and time (24-hour format)
-    const hours = now.getHours().toString().padStart(2, '0');  // 24-hour format
-    const minutes = now.getMinutes().toString().padStart(2, '0');
     
-    const day = now.getDate();
-    const month = now.toLocaleString('en-US', { month: 'long' });
-    const year = now.getFullYear();
+    // Subtract 5 hours
+    now.setHours(now.getHours() - 5);
     
-    // Format for "22:04 February 3, 2025"
-    const formattedTime = `${hours}:${minutes} ${month} ${day}, ${year}`;
-  
-    // Get ISO 8601 format
-    const isoTime = now.toISOString();  // Example: "2025-02-03T02:33:00.000Z"
-  
-    // Return both formatted time and ISO time
-    return {
-      humanReadable: formattedTime,
-      isoTime: isoTime,
-    };
+    // Format the ISO string without milliseconds (removing the "Z")
+    const isoTimeWithoutMilliseconds = now.toISOString().split('.')[0];
+    
+    // Append "-5" to indicate the offset
+    const returnme = isoTimeWithoutMilliseconds + '-05:00';
+    
+    return returnme;
   }
+  
   async function createEvent(startTime, endTime, title, description) {
     const calendar = google.calendar({ version: 'v3', auth: global.auth });
-  
-    // Fetch user's location and time zone based on IP address
-    const ip = await getIpAddress();  // You need to define this function to get the user's IP
+    const ip = await getIP();
     const apiUrl = `http://ip-api.com/json/${ip}?fields=timezone`;
   
     let userLocation;
@@ -129,12 +121,10 @@ function addTwoNumbers(args) {
       console.error('Error creating event:', err.message);
     }
   }
-  
-  
   async function getinfo() {
     try {
       // Get the public IP address of the current machine
-      const ipAddress = await publicIp.v4();
+      const ipAddress = getIP;
       // Fetch location information from IP-API
       const response = await axios.get(`http://ip-api.com/json/${ipAddress}?fields=status,message,country,regionName,city,zip,lat,lon,timezone,currency,isp,mobile,proxy,hosting,query`);
       // Return the full JSON response to the LLM
