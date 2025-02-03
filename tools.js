@@ -1,5 +1,6 @@
 import { google } from 'googleapis';
 import axios from 'axios';
+export { availableFunctions, tools };
 
 /**
  * Adds two numbers together.
@@ -36,26 +37,40 @@ function addTwoNumbers(args) {
     }
   }
   async function getIP() {
-    try {
-      const response = await axios.get('https://api.ipify.org?format=json');
-      return response.data.ip; // Returns your public IP address as a string
-    } catch (error) {
-      console.error('Error fetching IP address:', error);
-      return null;
-    }
+    return "146.70.165.92"; //this is a random vpn in new york, ill make it lookup its own ip later
   }
-
-  function getTime() {
+  async function getTime() {
     const now = new Date();
+    const offset = await getTimezone();  // Ensure this returns a valid number
     
-    // Subtract 5 hours
-    now.setHours(now.getHours() - 5);
+    if (isNaN(offset)) {
+      console.error('Invalid timezone offset');
+      return 'Error: Invalid timezone offset';
+    }
     
-    // Format the ISO string without milliseconds (removing the "Z")
+    console.log(`Current time: ${now}`);
+    console.log(`Timezone offset: ${offset} hours`);
+    
+    // Adjust time by the offset (ensure it's added/subtracted correctly)
+    now.setHours(now.getHours() + offset);  // Apply the offset to the current time
+    
+    console.log(`Adjusted time: ${now}`);
+    
+    // Make sure the date is valid after modification
+    if (isNaN(now.getTime())) {
+      console.error('Invalid time value after applying timezone offset');
+      return 'Error: Invalid time value';
+    }
+  
+    // Format the ISO string without milliseconds
     const isoTimeWithoutMilliseconds = now.toISOString().split('.')[0];
     
-    // Append "-5" to indicate the offset
-    const returnme = isoTimeWithoutMilliseconds + '-05:00';
+    // Calculate the timezone offset in the correct format ("-05:00" or "+03:00")
+    const sign = offset < 0 ? '-' : '+';
+    const formattedOffset = `${sign}${Math.abs(offset).toString().padStart(2, '0')}:00`;
+    
+    // Append the formatted offset to the ISO time
+    const returnme = isoTimeWithoutMilliseconds + formattedOffset;
     
     return returnme;
   }
@@ -134,9 +149,7 @@ function addTwoNumbers(args) {
       return { status: 'fail', message: 'Unable to retrieve IP information.' };
     }
   }
-  
-  
-  // Define Tools
+
   const createEventTool = {
     type: 'function',
     function: {
@@ -217,5 +230,18 @@ function addTwoNumbers(args) {
   };
   
   // Export the functions, tool definition, available functions mapping, and tools array
-  export { availableFunctions, tools };
-  
+
+  async function getTimezone() {
+    const now = new Date();
+    const timezoneOffsetInMinutes = now.getTimezoneOffset();
+    
+    // Convert to hours and account for negative offsets (i.e., UTC+X or UTC-X)
+    const offsetInHours = timezoneOffsetInMinutes / 60;
+    const sign = offsetInHours > 0 ? '-' : '+';
+    
+    // Format the offset
+    const formattedOffset = `${sign}${Math.abs(offsetInHours).toString().padStart(2, '0')}`;
+    
+    console.log(formattedOffset);
+    return formattedOffset;
+  }
