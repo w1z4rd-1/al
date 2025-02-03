@@ -212,7 +212,7 @@ function splitThoughtSpeechAction(input) {
     let thoughts = '';
     let speech = input;
     let action = null;
-  
+  //technicly a change for testing
     if (match) {
       thoughts = match[1].trim(); // Extract thoughts
       speech = match[2].trim();   // Extract speech
