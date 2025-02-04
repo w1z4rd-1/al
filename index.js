@@ -18,7 +18,8 @@ console.log(say.getInstalledVoices())
 const SCOPES = ['https://www.googleapis.com/auth/calendar'];
 const CREDENTIALS_PATH = 'C:\\Users\\Terac\\ALFRED\\creds.json';
 const TOKEN_PATH = 'C:\\Users\\Terac\\ALFRED\\token.json';
-const DEFAULT_MODEL = 'qwen2.5:7b';
+const DEFAULT_MODEL = 'llama3.2:3b';
+const HELPER_MODEL = 'deepseek-r1:8b';
 const DEFAULT_PORT = 11434;
 const DEFAULT_URL = 'http://localhost';
 const MAX_USER_INPUT_LENGTH = 10000;  
@@ -120,22 +121,18 @@ async function promptOllama(messages, model, url, port, tools) {
         if (functionToCall) {
           console.log('Calling function:', tool.function.name);
           console.log('Arguments:', tool.function.arguments);
-
-          // Call the function with its arguments
-          const output = functionToCall(tool.function.arguments);
+          const output = await functionToCall(tool.function.arguments);
           console.log('Function output:', output);
-
-          // Add tool output to the conversation history
           messages.push({ role: 'assistant', content: result.content });
           messages.push({ role: 'tool', content: output.toString() });
-
-          // Re-prompt the model with the updated messages
+          // Re-prompt the model recursively:
           return await promptOllama(messages, model, url, port, tools);
         } else {
           console.error('Function not found:', tool.function.name);
         }
       }
     }
+    
 
     // Return the final response if no tool calls are needed
     return result.content;

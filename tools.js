@@ -39,29 +39,16 @@ function addTwoNumbers(args) {
   async function getIP() {
     return "146.70.165.92"; //this is a random vpn in new york, ill make it lookup its own ip later
   }
-  async function getTime() {
+
+  function getTime() {
     const now = new Date();
-    const offset = await getTimezone();  // Ensure this returns a valid number
     
-    if (isNaN(offset)) {
-      console.error('Invalid timezone offset');
-      return 'Error: Invalid timezone offset';
-    }
+    // Fetch the user's timezone offset (as a number) synchronously
+    const offset = getTimezone(); // Assumes getTimezone() returns a number, e.g., -5
     
-    console.log(`Current time: ${now}`);
-    console.log(`Timezone offset: ${offset} hours`);
+    // Adjust time by the offset (this adds the offset hours to the current time)
+    now.setHours(now.getHours() + offset);
     
-    // Adjust time by the offset (ensure it's added/subtracted correctly)
-    now.setHours(now.getHours() + offset);  // Apply the offset to the current time
-    
-    console.log(`Adjusted time: ${now}`);
-    
-    // Make sure the date is valid after modification
-    if (isNaN(now.getTime())) {
-      console.error('Invalid time value after applying timezone offset');
-      return 'Error: Invalid time value';
-    }
-  
     // Format the ISO string without milliseconds
     const isoTimeWithoutMilliseconds = now.toISOString().split('.')[0];
     
@@ -70,51 +57,46 @@ function addTwoNumbers(args) {
     const formattedOffset = `${sign}${Math.abs(offset).toString().padStart(2, '0')}:00`;
     
     // Append the formatted offset to the ISO time
-    const returnme = isoTimeWithoutMilliseconds + formattedOffset;
+    const isoWithOffset = isoTimeWithoutMilliseconds + formattedOffset;
     
-    return returnme;
+    // Get the day of the week in full textual format (e.g., "Monday")
+    const dayOfWeek = now.toLocaleString('en-US', { weekday: 'long' });
+    
+    // Return both the ISO formatted time and the day of the week
+    return isoWithOffset;
   }
   
-  async function createEvent(startTime, endTime, title, description) {
+  async function createEvent(args) {
+    // If args is a JSON string, parse it; otherwise assume it's an object
+    const { startTime, endTime, title, description } =
+      typeof args === 'string' ? JSON.parse(args) : args;
+    
+    // Convert startTime to a Date object and get the current time
+    const eventStart = new Date(startTime);
+    const now = new Date();
+    
+    // Check if the event's start time is in the past
+    if (eventStart < now) {
+      // Assume getTime() is an async function that returns a string with the current time
+      const currentTime = await getTime();
+      return `The date and time entered is in the past, the current time is: ${currentTime}`;
+    }
+    
+    // Create a Google Calendar client using the globally available auth object
     const calendar = google.calendar({ version: 'v3', auth: global.auth });
-    const ip = await getIP();
-    const apiUrl = `http://ip-api.com/json/${ip}?fields=timezone`;
-  
-    let userLocation;
-    try {
-      const response = await fetch(apiUrl);
-      const data = await response.json();
-  
-      if (data.status === 'fail') {
-        console.error('Error fetching location data:', data.message);
-        return;
-      }
-  
-      userLocation = {
-        timezone: data.timezone,
-      };
-    } catch (error) {
-      console.error('Error fetching location data:', error.message);
-      return;
-    }
-  
-    if (!userLocation || !userLocation.timezone) {
-      console.error('Failed to get user timezone.');
-      return;
-    }
-  
-    // Create event with dynamically retrieved time zone
+    
+    // Construct the event object
     const event = {
       summary: title,
-      location: 'TBD', // Location can be passed as an argument if needed
-      description: description || '', // Use passed description or empty string if none provided
+      location: 'TBD',
+      description: description || '',
       start: {
-        dateTime: startTime, // ISO 8601 formatted start time
-        timeZone: userLocation.timezone, // Use the dynamically fetched time zone
+        dateTime: startTime,  // Must be an ISO 8601 string with timezone (e.g., "2025-02-03T10:00:00-05:00")
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       },
       end: {
-        dateTime: endTime, // ISO 8601 formatted end time
-        timeZone: userLocation.timezone, // Use the dynamically fetched time zone
+        dateTime: endTime,    // Must be an ISO 8601 string with timezone
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       },
       reminders: {
         useDefault: false,
@@ -123,19 +105,21 @@ function addTwoNumbers(args) {
         ],
       },
     };
-  
-    console.log('Event object:', event); // Log the event object for debugging
-  
+    
+    console.log('Event object:', event); // Debug output
+    
     try {
       const res = await calendar.events.insert({
         calendarId: 'primary',
         resource: event,
       });
-      console.log('Event created: %s', res.data.htmlLink);
+      return `Event titled "${title}" created starting at "${startTime}" and ending at "${endTime}". View it here: ${res.data.htmlLink}`;
     } catch (err) {
       console.error('Error creating event:', err.message);
+      throw err;
     }
   }
+  
   async function getinfo() {
     try {
       // Get the public IP address of the current machine
@@ -154,18 +138,32 @@ function addTwoNumbers(args) {
     type: 'function',
     function: {
       name: 'createEvent',
-      description: 'Creates a Google Calendar event. Provide the start time, end time (both in ISO 8601 format yyyy-mm-ddThh:mm:ss±hh:mm), and the title for the event.',
+      description: 'Creates a new event in Google Calendar. must be ISO 8601 format with timezone (e.g., "2025-02-03T10:00:00-05:00").',
       parameters: {
         type: 'object',
-        required: ['startTime', 'endTime', 'title'],
+        required: ['startTime', 'endTime', 'title', 'description'],
         properties: {
-          startTime: { type: 'string', description: 'Event start time in ISO 8601 format.' },
-          endTime: { type: 'string', description: 'Event end time in ISO 8601 format.' },
-          title: { type: 'string', description: 'The title of the event.' },
+          startTime: {
+            type: 'string',
+            description: 'The start time of the event in ISO 8601 format with timezone offset.'
+          },
+          endTime: {
+            type: 'string',
+            description: 'The end time of the event in ISO 8601 format with timezone offset.'
+          },
+          title: {
+            type: 'string',
+            description: 'The title (summary) of the event.'
+          },
+          description: {
+            type: 'string',
+            description: 'A description of the event.'
+          },
         },
       },
     },
   };
+  
   const addTwoNumbersTool = {
     type: 'function',
     function: {
@@ -197,10 +195,10 @@ function addTwoNumbers(args) {
     type: 'function',
     function: {
       name: 'getTime',
-      description: 'Gets the current date and time, both in a readable format, and as ISO 8601',
+      description: 'Gets the current date and time, as ISO 8601, as well as the day of the week, recomended before running createevent',
       parameters: {
         type: 'object',
-        properties: {}, // No parameters are required for this function
+        properties: {},
       },
     },
   };
@@ -231,17 +229,9 @@ function addTwoNumbers(args) {
   
   // Export the functions, tool definition, available functions mapping, and tools array
 
-  async function getTimezone() {
+  function getTimezone() {
     const now = new Date();
     const timezoneOffsetInMinutes = now.getTimezoneOffset();
-    
-    // Convert to hours and account for negative offsets (i.e., UTC+X or UTC-X)
     const offsetInHours = timezoneOffsetInMinutes / 60;
-    const sign = offsetInHours > 0 ? '-' : '+';
-    
-    // Format the offset
-    const formattedOffset = `${sign}${Math.abs(offsetInHours).toString().padStart(2, '0')}`;
-    
-    console.log(formattedOffset);
-    return formattedOffset;
+    return -offsetInHours;
   }
